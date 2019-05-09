@@ -35,13 +35,39 @@ const (
 	CertTypeSocial   = "6" // 社会代码
 )
 
+// 个人用户身份地区类型（V4版本）
+const (
+	YHTIdentityRegionMainland = "0" // 大陆
+	YHTIdentityRegionHK       = "1" // 香港
+	YHTIdentityRegionTaiwan   = "2" // 台湾
+	YHTIdentityRegionMacao    = "3" // 澳门
+	YHTIdentityRegionForeign  = "4" // 海外
+)
+
+// 个人用户证件类型（V4版本）
+const (
+	YHTPersonCertTypeIDCard   = "a" // 身份证
+	YHTPersonCertTypePassport = "b" // 护照
+	YHTPersonCertTypeEEP      = "d" // 港澳通行证
+	YHTPersonCertTypeMTPForTW = "e" // 台胞证
+	YHTPersonCertTypeMTPForHM = "f" // 港澳居民来往内地通行证
+	YHTPersonCertTypeOther    = "z" // 其它
+)
+
+// 个人用户手机号地区类型
+const (
+	YHTPhoneRegionMainland = "0" // 大陆
+	YHTPhoneRegionHKMacao  = "1" // 香港澳门
+	YHTPhoneRegionTaiwan   = "2" // 台湾
+)
+
 // constants for url and keys
 const (
 	YHTAPIGateway  = "https://sdk.yunhetong.com/sdk"
 	YHTAuthGateway = "https://authentic.yunhetong.com"
 	AppIDKey       = "appId"
 	PasswordKey    = "password"
-	YHTAPIServerV4 = "https://api.yunhetong.com/api"
+	YHTAPIServerV4 = "https://api.yunhetong.com/api" // V4版本使用
 )
 
 // Config contains configurations about YunHeTong service.
@@ -60,10 +86,11 @@ var (
 	YHTClient *Client
 )
 
-// updateLTTRoutine 每隔14分钟更新平台长效令牌
-func updateLTTRoutine() {
+// UpdateLTTRoutine 每隔14分钟更新平台长效令牌
+func UpdateLTTRoutine(yhtClient *Client) {
 	for true {
-		YHTClient.updateLongTimeToken()
+		yhtClient.updateLongTimeToken()
+		holmes.Debugln("get token: ", yhtClient.LTT)
 		time.Sleep(14 * time.Minute)
 	}
 }
@@ -75,8 +102,8 @@ func InitYHTClient(appID, appKey string) {
 		AppKey: appKey,
 	})
 	// 开启一个goroutine更新平台长效令牌
-	// go YHTClient.updateLongTimeToken()
-	YHTClient.updateLongTimeToken() // 测试
+	go UpdateLTTRoutine(YHTClient)
+	// YHTClient.updateLongTimeToken() // 测试
 }
 
 // Client handles all APIs for YunHeTong service.
@@ -105,21 +132,20 @@ func (c *Client) updateLongTimeToken() {
 		AppID:  c.config.AppID,
 		AppKey: c.config.AppKey,
 	}
-	holmes.Debugf("%#v", req)
 	jsonData, err := json.Marshal(req)
 	if err != nil {
 		holmes.Debugln(err)
 		return
 	}
 	ret, ltt, err := httpRequestV4(c, req.URI(), jsonData, func() interface{} {
-		return &yhtBaseResp{}
+		return &YhtBaseResp{}
 	})
 	if err != nil {
 		holmes.Debugln(err)
 	} else {
-		holmes.Debugln("LTT: ", ltt)
-		resp := ret.(*yhtBaseResp)
+		resp := ret.(*YhtBaseResp)
 		if 200 == resp.Code {
+			c.LTT = ltt // 保存token
 			holmes.Debugln("LTT updated!")
 		} else {
 			holmes.Debugln(resp)
@@ -684,8 +710,6 @@ func (c *Client) AnswerAsyncNotify(rsp bool, msg string) string {
 // httpRequestV4 云合同V4版本接口请求
 func httpRequestV4(c *Client, uri string, jsonData []byte, factory func() interface{}) (interface{}, string, error) {
 	apiURL := YHTAPIServerV4 + uri
-	holmes.Debugln(apiURL)
-	holmes.Debugln(string(jsonData))
 	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, "", err
@@ -697,8 +721,13 @@ func httpRequestV4(c *Client, uri string, jsonData []byte, factory func() interf
 		return nil, "", err
 	}
 
+	llt := ""
 	if uri == "/auth/login" {
-		holmes.Debugln(yhtResp.Header)
+		if v, ok := yhtResp.Header["Token"]; ok { // 取token
+			if ok {
+				llt = v[0]
+			}
+		}
 	}
 
 	defer yhtResp.Body.Close()
@@ -712,7 +741,7 @@ func httpRequestV4(c *Client, uri string, jsonData []byte, factory func() interf
 		return nil, "", err
 	}
 
-	return rsp, "", nil
+	return rsp, llt, nil
 }
 
 func httpRequest(c *Client, uri string, paramMap map[string]string, fileData []byte, factory func() interface{}) (interface{}, error) {

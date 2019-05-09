@@ -1,6 +1,7 @@
 package goyht
 
-type yhtBaseResp struct {
+// YhtBaseResp 云合同基础应答模型
+type YhtBaseResp struct {
 	Code    int    `json:"code"`
 	Message string `json:"msg"`
 }
@@ -13,6 +14,33 @@ type yhtAuthLoginReq struct {
 
 func (p yhtAuthLoginReq) URI() string {
 	return "/auth/login"
+}
+
+// YhtCreatePersonReq 云合同创建个人用户请求模型
+type YhtCreatePersonReq struct {
+	Username       string `json:"userName"`
+	IdentityRegion string `json:"identityRegion"`
+	CertType       string `json:"certifyType"`
+	CertNum        string `json:"certifyNum"`
+	PhoneRegion    string `json:"phoneRegion"`
+	Phone          string `json:"phoneNo"`
+	CAType         string `json:"caType"` // 固定传B2
+}
+
+// SignerIDResp 用户ID应答模型
+type SignerIDResp struct {
+	SignerID string `json:"signerId"`
+}
+
+// YhtCreatePersonResp 云合同创建个人用户应答
+type YhtCreatePersonResp struct {
+	YhtBaseResp
+	Data SignerIDResp `json:"data"`
+}
+
+// URI .
+func (p YhtCreatePersonReq) URI() string {
+	return "/user/person"
 }
 
 type authParams struct {
