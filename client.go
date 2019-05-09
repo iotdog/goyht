@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/leesper/holmes"
 )
 
 // M is a convenient alias for a map[string]interface{} map.
@@ -38,11 +41,13 @@ const (
 	YHTAuthGateway = "https://authentic.yunhetong.com"
 	AppIDKey       = "appId"
 	PasswordKey    = "password"
+	YHTAPIServerV4 = "https://api.yunhetong.com/api"
 )
 
 // Config contains configurations about YunHeTong service.
 type Config struct {
-	AppID       string
+	AppID       string // API V4使用
+	AppKey      string // API V4使用
 	Password    string
 	APIGateway  string
 	AuthID      string
@@ -50,14 +55,39 @@ type Config struct {
 	AuthGateway string
 }
 
+var (
+	// YHTClient 云合同客户端单件对象
+	YHTClient *Client
+)
+
+// updateLTTRoutine 每隔14分钟更新平台长效令牌
+func updateLTTRoutine() {
+	for true {
+		YHTClient.updateLongTimeToken()
+		time.Sleep(14 * time.Minute)
+	}
+}
+
+// InitYHTClient 初始化云合同客户端，该方法只可调用一次
+func InitYHTClient(appID, appKey string) {
+	YHTClient := newClient(Config{
+		AppID:  appID,
+		AppKey: appKey,
+	})
+	// 开启一个goroutine更新平台长效令牌
+	// go YHTClient.updateLongTimeToken()
+	YHTClient.updateLongTimeToken() // 测试
+}
+
 // Client handles all APIs for YunHeTong service.
 type Client struct {
 	config    Config
 	tlsClient http.Client
+	LTT       string // 平台的长效令牌（Long Time Token），有效期15分钟
 }
 
-// NewClient returns a *Client.
-func NewClient(cfg Config) *Client {
+// newClient returns a *Client.
+func newClient(cfg Config) *Client {
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: false},
 	}
@@ -65,6 +95,35 @@ func NewClient(cfg Config) *Client {
 	return &Client{
 		config:    cfg,
 		tlsClient: client,
+		LTT:       "",
+	}
+}
+
+// updateLongTimeToken 更新长效令牌
+func (c *Client) updateLongTimeToken() {
+	req := yhtAuthLoginReq{
+		AppID:  c.config.AppID,
+		AppKey: c.config.AppKey,
+	}
+	holmes.Debugf("%#v", req)
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		holmes.Debugln(err)
+		return
+	}
+	ret, ltt, err := httpRequestV4(c, req.URI(), jsonData, func() interface{} {
+		return &yhtBaseResp{}
+	})
+	if err != nil {
+		holmes.Debugln(err)
+	} else {
+		holmes.Debugln("LTT: ", ltt)
+		resp := ret.(*yhtBaseResp)
+		if 200 == resp.Code {
+			holmes.Debugln("LTT updated!")
+		} else {
+			holmes.Debugln(resp)
+		}
 	}
 }
 
@@ -620,6 +679,40 @@ func (c *Client) AnswerAsyncNotify(rsp bool, msg string) string {
 		return ""
 	}
 	return string(data)
+}
+
+// httpRequestV4 云合同V4版本接口请求
+func httpRequestV4(c *Client, uri string, jsonData []byte, factory func() interface{}) (interface{}, string, error) {
+	apiURL := YHTAPIServerV4 + uri
+	holmes.Debugln(apiURL)
+	holmes.Debugln(string(jsonData))
+	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewReader(jsonData))
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Add("Content-Type", "application/json;charset=UTF-8")
+
+	yhtResp, err := c.tlsClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if uri == "/auth/login" {
+		holmes.Debugln(yhtResp.Header)
+	}
+
+	defer yhtResp.Body.Close()
+
+	data, err := ioutil.ReadAll(yhtResp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+	rsp := factory()
+	if err = json.NewDecoder(bytes.NewReader(data)).Decode(rsp); err != nil {
+		return nil, "", err
+	}
+
+	return rsp, "", nil
 }
 
 func httpRequest(c *Client, uri string, paramMap map[string]string, fileData []byte, factory func() interface{}) (interface{}, error) {

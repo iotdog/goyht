@@ -1,5 +1,20 @@
 package goyht
 
+type yhtBaseResp struct {
+	Code    int    `json:"code"`
+	Message string `json:"msg"`
+}
+
+type yhtAuthLoginReq struct {
+	AppID    string `json:"appId"`    // 应用ID
+	AppKey   string `json:"appKey"`   // 应用密钥
+	SignerID string `json:"signerId"` // 用户ID，可选参数，不传则获取平台的长效令牌，否则获取指定用户的长效令牌
+}
+
+func (p yhtAuthLoginReq) URI() string {
+	return "/auth/login"
+}
+
 type authParams struct {
 	IDNo       string `param:"idNo"`
 	IDName     string `param:"idName"`
