@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"mime/multipart"
@@ -35,39 +36,13 @@ const (
 	CertTypeSocial   = "6" // 社会代码
 )
 
-// 个人用户身份地区类型（V4版本）
-const (
-	YHTIdentityRegionMainland = "0" // 大陆
-	YHTIdentityRegionHK       = "1" // 香港
-	YHTIdentityRegionTaiwan   = "2" // 台湾
-	YHTIdentityRegionMacao    = "3" // 澳门
-	YHTIdentityRegionForeign  = "4" // 海外
-)
-
-// 个人用户证件类型（V4版本）
-const (
-	YHTPersonCertTypeIDCard   = "a" // 身份证
-	YHTPersonCertTypePassport = "b" // 护照
-	YHTPersonCertTypeEEP      = "d" // 港澳通行证
-	YHTPersonCertTypeMTPForTW = "e" // 台胞证
-	YHTPersonCertTypeMTPForHM = "f" // 港澳居民来往内地通行证
-	YHTPersonCertTypeOther    = "z" // 其它
-)
-
-// 个人用户手机号地区类型
-const (
-	YHTPhoneRegionMainland = "0" // 大陆
-	YHTPhoneRegionHKMacao  = "1" // 香港澳门
-	YHTPhoneRegionTaiwan   = "2" // 台湾
-)
-
 // constants for url and keys
 const (
-	YHTAPIGateway  = "https://sdk.yunhetong.com/sdk"
-	YHTAuthGateway = "https://authentic.yunhetong.com"
-	AppIDKey       = "appId"
-	PasswordKey    = "password"
-	YHTAPIServerV4 = "https://api.yunhetong.com/api" // V4版本使用
+	YHTAPIGateway   = "https://sdk.yunhetong.com/sdk"
+	YHTAuthGateway  = "https://authentic.yunhetong.com"
+	AppIDKey        = "appId"
+	PasswordKey     = "password"
+	YHTAPIGatewayV4 = "https://api.yunhetong.com/api" // V4版本使用
 )
 
 // Config contains configurations about YunHeTong service.
@@ -75,42 +50,51 @@ type Config struct {
 	AppID       string // API V4使用
 	AppKey      string // API V4使用
 	Password    string
-	APIGateway  string
+	APIGateway  string // API V4使用
 	AuthID      string
 	AuthPWD     string
-	AuthGateway string
+	AuthGateway string // API V4使用
 }
 
 var (
 	// YHTClient 云合同客户端单件对象
-	YHTClient *Client
+	yhtClient *Client
 )
 
-// UpdateLTTRoutine 每隔14分钟更新平台长效令牌
-func UpdateLTTRoutine(yhtClient *Client) {
+// updateLTTRoutine 每隔14分钟更新平台长效令牌
+func updateLTTRoutine(yhtClient *Client) {
 	for true {
 		yhtClient.updateLongTimeToken()
-		holmes.Debugln("get token: ", yhtClient.LTT)
 		time.Sleep(14 * time.Minute)
 	}
 }
 
 // InitYHTClient 初始化云合同客户端，该方法只可调用一次
 func InitYHTClient(appID, appKey string) {
-	YHTClient := newClient(Config{
-		AppID:  appID,
-		AppKey: appKey,
+	yhtClient = newClient(Config{
+		AppID:       appID,
+		AppKey:      appKey,
+		APIGateway:  YHTAPIGatewayV4,
+		AuthGateway: YHTAuthGateway,
 	})
 	// 开启一个goroutine更新平台长效令牌
-	go UpdateLTTRoutine(YHTClient)
-	// YHTClient.updateLongTimeToken() // 测试
+	go updateLTTRoutine(yhtClient)
+	// yhtClient.updateLongTimeToken() // 测试
+}
+
+// GetClient 获取云合同客户端
+func GetClient() *Client {
+	if yhtClient == nil {
+		fmt.Println("YHT client is not initialized, please invoke InitYHTClient() first!")
+	}
+	return yhtClient
 }
 
 // Client handles all APIs for YunHeTong service.
 type Client struct {
 	config    Config
 	tlsClient http.Client
-	LTT       string // 平台的长效令牌（Long Time Token），有效期15分钟
+	ltt       string // 平台的长效令牌（Long Time Token），有效期15分钟
 }
 
 // newClient returns a *Client.
@@ -122,7 +106,7 @@ func newClient(cfg Config) *Client {
 	return &Client{
 		config:    cfg,
 		tlsClient: client,
-		LTT:       "",
+		ltt:       "",
 	}
 }
 
@@ -137,7 +121,7 @@ func (c *Client) updateLongTimeToken() {
 		holmes.Debugln(err)
 		return
 	}
-	ret, ltt, err := httpRequestV4(c, req.URI(), jsonData, func() interface{} {
+	ret, ltt, err := httpRequestV4(c, "", req.URI(), req.Method(), jsonData, func() interface{} {
 		return &YhtBaseResp{}
 	})
 	if err != nil {
@@ -145,12 +129,188 @@ func (c *Client) updateLongTimeToken() {
 	} else {
 		resp := ret.(*YhtBaseResp)
 		if 200 == resp.Code {
-			c.LTT = ltt // 保存token
-			holmes.Debugln("LTT updated!")
+			c.ltt = ltt // 保存token
 		} else {
 			holmes.Debugln(resp)
 		}
 	}
+}
+
+// CreatePersonV4 创建个人用户
+func (c *Client) CreatePersonV4(req *YhtCreatePersonReq) (*YhtCreateUserResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtCreateUserResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtCreateUserResp), nil
+}
+
+// CreateCompanyV4 创建企业用户
+func (c *Client) CreateCompanyV4(req *YhtCreateCompanyReq) (*YhtCreateUserResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtCreateUserResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtCreateUserResp), nil
+}
+
+// CreatePersonMoulageV4 创建个人印章
+func (c *Client) CreatePersonMoulageV4(req *YhtCreatePersonMoulageReq) (*YhtCreateMoulageResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtCreateMoulageResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtCreateMoulageResp), nil
+}
+
+// CreateCompanyMoulageV4 创建企业印章
+func (c *Client) CreateCompanyMoulageV4(req *YhtCreateCompanyMoulageReq) (*YhtCreateMoulageResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtCreateMoulageResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtCreateMoulageResp), nil
+}
+
+// CreateContractFromTemplateV4 根据模板创建合同
+func (c *Client) CreateContractFromTemplateV4(req *YhtCreateTemplateContractReq) (*YhtCreateTemplateContractResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtCreateTemplateContractResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtCreateTemplateContractResp), nil
+}
+
+// AddSignerV4 添加签署者
+func (c *Client) AddSignerV4(req *YhtAddSignerReq) (*YhtBaseResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtBaseResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtBaseResp), nil
+}
+
+// SignContractV4 签署合同（V4版本）
+func (c *Client) SignContractV4(req *YhtSignContractReq) (*YhtBaseResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtBaseResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtBaseResp), nil
+}
+
+// AuthRealNameMobileV4 运营商三要素认证，认证成功返回nil，否则返回error
+func (c *Client) AuthRealNameMobileV4(idNo, idName, phone string) error {
+	uri := "/authentic/personal/mobile/realName"
+	req := map[string]string{
+		"appId":  c.config.AppID,
+		"appKey": c.config.AppKey,
+		"idNo":   idNo,
+		"idName": idName,
+		"mobile": phone,
+	}
+	ret, err := httpRequest(c, uri, req, nil, func() interface{} {
+		return &AuthRealNameResp{}
+	})
+	if err != nil {
+		return err
+	}
+	resp := ret.(*AuthRealNameResp)
+	if 200 != resp.Code {
+		holmes.Debugln(resp)
+		return errors.New(resp.Message)
+	}
+
+	return nil
+}
+
+// AuthRealNameBankV4 银行四要素认证
+func (c *Client) AuthRealNameBankV4(idNo, idName, phone, bankCardNo string) error {
+	uri := "/authentic/personal/mobile/realName"
+	req := map[string]string{
+		"appId":      c.config.AppID,
+		"appKey":     c.config.AppKey,
+		"idNo":       idNo,
+		"idName":     idName,
+		"mobile":     phone,
+		"bankCardNo": bankCardNo,
+	}
+	ret, err := httpRequest(c, uri, req, nil, func() interface{} {
+		return &AuthRealNameResp{}
+	})
+	if err != nil {
+		return err
+	}
+	resp := ret.(*AuthRealNameResp)
+	if 200 != resp.Code {
+		holmes.Debugln(resp)
+		return errors.New(resp.Message)
+	}
+
+	return nil
 }
 
 // AuthRealName authenticates ID number and name via YunHeTong service.
@@ -708,13 +868,16 @@ func (c *Client) AnswerAsyncNotify(rsp bool, msg string) string {
 }
 
 // httpRequestV4 云合同V4版本接口请求
-func httpRequestV4(c *Client, uri string, jsonData []byte, factory func() interface{}) (interface{}, string, error) {
-	apiURL := YHTAPIServerV4 + uri
+func httpRequestV4(c *Client, token, uri, method string, jsonData []byte, factory func() interface{}) (interface{}, string, error) {
+	apiURL := c.config.APIGateway + uri
 	req, err := http.NewRequest(http.MethodPost, apiURL, bytes.NewReader(jsonData))
 	if err != nil {
 		return nil, "", err
 	}
 	req.Header.Add("Content-Type", "application/json;charset=UTF-8")
+	if "" != token {
+		req.Header.Add("token", token)
+	}
 
 	yhtResp, err := c.tlsClient.Do(req)
 	if err != nil {
@@ -750,7 +913,7 @@ func httpRequest(c *Client, uri string, paramMap map[string]string, fileData []b
 		uri = fmt.Sprintf("%s?token=%s", uri, token)
 	}
 	apiURL := fmt.Sprintf("%s%s", c.config.APIGateway, uri)
-	if strings.Contains(uri, "authentication") {
+	if strings.Contains(uri, "authentic") {
 		apiURL = fmt.Sprintf("%s%s", c.config.AuthGateway, uri)
 	}
 
