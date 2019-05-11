@@ -172,6 +172,24 @@ func (c *Client) CreateCompanyV4(req *YhtCreateCompanyReq) (*YhtCreateUserResp, 
 	return ret.(*YhtCreateUserResp), nil
 }
 
+// QuerySignerID 查询与合同平台用户ID
+func (c *Client) QuerySignerID(req *YhtQuerySignerIDReq) (*YhtQuerySignerIDResp, error) {
+	if nil == req {
+		return nil, errors.New("invalid parameter")
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	ret, _, err := httpRequestV4(c, c.ltt, req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtQuerySignerIDResp{}
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ret.(*YhtQuerySignerIDResp), nil
+}
+
 // CreatePersonMoulageV4 创建个人印章
 func (c *Client) CreatePersonMoulageV4(req *YhtCreatePersonMoulageReq) (*YhtCreateMoulageResp, error) {
 	if nil == req {

@@ -99,6 +99,28 @@ func (p YhtCreateCompanyReq) Method() string {
 	return http.MethodPost
 }
 
+// YhtQuerySignerIDReq 云合同查询用户ID请求
+type YhtQuerySignerIDReq struct {
+	CertifyNumList []string `json:"certifyNumList"`
+}
+
+// URI .
+func (p YhtQuerySignerIDReq) URI() string {
+	return "/user/signerId/certifyNums"
+}
+
+// Method .
+func (p YhtQuerySignerIDReq) Method() string {
+	return http.MethodPost
+}
+
+// YhtQuerySignerIDResp 云合同查询用户ID应答
+type YhtQuerySignerIDResp struct {
+	Code    int              `json:"code"`
+	Message bool             `json:"msg"`
+	Data    []map[string]int `json:"data"`
+}
+
 // 云合同个人印章边框类型
 const (
 	YHTPMWithBorder    = "B1" // 有边框
