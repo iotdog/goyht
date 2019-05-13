@@ -299,7 +299,7 @@ func (c *Client) AuthRealNameMobileV4(idNo, idName, phone string) error {
 	resp := ret.(*AuthRealNameResp)
 	if 200 != resp.Code {
 		holmes.Debugln(resp)
-		return errors.New(resp.Message)
+		return errors.New(resp.Message())
 	}
 
 	return nil
@@ -307,7 +307,7 @@ func (c *Client) AuthRealNameMobileV4(idNo, idName, phone string) error {
 
 // AuthRealNameBankV4 银行四要素认证
 func (c *Client) AuthRealNameBankV4(idNo, idName, phone, bankCardNo string) error {
-	uri := "/authentic/personal/mobile/realName"
+	uri := "/authentic/personal/bankFour"
 	req := map[string]string{
 		"appId":      c.config.AppID,
 		"appKey":     c.config.AppKey,
@@ -325,7 +325,7 @@ func (c *Client) AuthRealNameBankV4(idNo, idName, phone, bankCardNo string) erro
 	resp := ret.(*AuthRealNameResp)
 	if 200 != resp.Code {
 		holmes.Debugln(resp)
-		return errors.New(resp.Message)
+		return errors.New(resp.Message())
 	}
 
 	return nil

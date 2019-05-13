@@ -1,11 +1,22 @@
 package goyht
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 // YhtBaseResp 云合同基础应答模型
 type YhtBaseResp struct {
-	Code    int    `json:"code"`
-	Message string `json:"msg"`
+	Code   int             `json:"code"`
+	RawMsg json.RawMessage `json:"msg"`
+}
+
+// Message .
+func (p YhtBaseResp) Message() string {
+	if 200 != p.Code {
+		return string(p.RawMsg)
+	}
+	return "请求成功"
 }
 
 type yhtAuthLoginReq struct {
@@ -61,7 +72,7 @@ type YhtCreatePersonReq struct {
 
 // SignerIDResp 用户ID应答模型
 type SignerIDResp struct {
-	SignerID string `json:"signerId"`
+	SignerID int `json:"signerId"`
 }
 
 // YhtCreateUserResp 云合同创建个人用户应答
@@ -116,9 +127,8 @@ func (p YhtQuerySignerIDReq) Method() string {
 
 // YhtQuerySignerIDResp 云合同查询用户ID应答
 type YhtQuerySignerIDResp struct {
-	Code    int              `json:"code"`
-	Message bool             `json:"msg"`
-	Data    []map[string]int `json:"data"`
+	YhtBaseResp
+	Data []map[string]int `json:"data"`
 }
 
 // 云合同个人印章边框类型
@@ -204,7 +214,7 @@ func (p YhtCreateCompanyMoulageReq) Method() string {
 
 // MoulageIDResp .
 type MoulageIDResp struct {
-	MoulageID string `json:"moulageId"`
+	MoulageID int `json:"moulageId"`
 }
 
 // YhtCreateMoulageResp 云合同创建印章应答
@@ -233,12 +243,13 @@ func (p YhtCreateTemplateContractReq) Method() string {
 
 // ContractIDResp .
 type ContractIDResp struct {
-	ContractID string `json:"contractId"`
+	ContractID int `json:"contractId"`
 }
 
 // YhtCreateTemplateContractResp 根据模板生成合同应答
 type YhtCreateTemplateContractResp struct {
 	YhtBaseResp
+	Data ContractIDResp `json:"data"`
 }
 
 // 合同ID类型
