@@ -91,6 +91,11 @@ func (p YhtCreatePersonReq) Method() string {
 	return http.MethodPost
 }
 
+// 企业用户证件类型
+const (
+	YHTCompanyCertTypeUniformSocailCreditCode = "1"
+)
+
 // YhtCreateCompanyReq 云合同创建企业用户请求
 type YhtCreateCompanyReq struct {
 	Username string `json:"userName"`
