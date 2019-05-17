@@ -19,6 +19,14 @@ func (p YhtBaseResp) Message() string {
 	return "请求成功"
 }
 
+// Success 请求是否成功
+func (p YhtBaseResp) Success() bool {
+	if 200 == p.Code {
+		return true
+	}
+	return false
+}
+
 type yhtAuthLoginReq struct {
 	AppID    string `json:"appId"`    // 应用ID
 	AppKey   string `json:"appKey"`   // 应用密钥
