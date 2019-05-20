@@ -136,6 +136,27 @@ func (c *Client) updateLongTimeToken() {
 	}
 }
 
+// UserTokenV4 用户登录
+func (c *Client) UserTokenV4(signerID string) (*YhtBaseResp, string, error) {
+	req := yhtAuthLoginReq{
+		AppID:    c.config.AppID,
+		AppKey:   c.config.AppKey,
+		SignerID: signerID,
+	}
+	jsonData, err := json.Marshal(req)
+	if err != nil {
+		holmes.Debugln(err)
+		return nil, "", err
+	}
+	ret, ltt, err := httpRequestV4(c, "", req.URI(), req.Method(), jsonData, func() interface{} {
+		return &YhtBaseResp{}
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return ret.(*YhtBaseResp), ltt, err
+}
+
 // CreatePersonV4 创建个人用户
 func (c *Client) CreatePersonV4(req *YhtCreatePersonReq) (*YhtCreateUserResp, error) {
 	if nil == req {
